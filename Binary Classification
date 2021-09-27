@@ -10,6 +10,9 @@ from sklearn.metrics import confusion_matrix
 from sklearn.metrics import precision_score, recall_score
 from sklearn.metrics import f1_score
 from sklearn.metrics import precision_recall_curve
+from sklearn.metrics import roc_curve
+from sklearn.metrics import roc_auc_score
+from sklearn.ensemble import RandomForestClassifier
 
 ########## SETUP ##########
 # to make this notebook's output stable across runs
@@ -59,6 +62,9 @@ X_train, X_test, y_train, y_test = X[:60000], X[60000:], y[:60000], y[60000:] # 
 y_train_5 = (y_train == 5) # True for all 5s, False for all other digits
 y_test_5 = (y_test == 5)
 
+
+########## Stochastic Gradient Descent Alogorithm ##########
+############################################################
 # Use the Stochastic Gradient Descent method to see if some_digit is a '5'
 sgd_clf = SGDClassifier(max_iter=1000, tol=1e-3, random_state=42) # Create the SGDClassifier
 sgd_clf.fit(X_train, y_train_5) # Train it on the whole X_train set for the label y_train_5 (5)
@@ -67,17 +73,17 @@ print(sgd_clf.predict([some_digit]))    # Go! The algorithm was trained using th
                                         #   as y_train_5
 
 ########## Evaluate the the algorithm ##########
-# Cross Validation - Using Accuracy
+########## Cross Validation - Using Accuracy ##########
 print(cross_val_score(sgd_clf, X_train, y_train_5, cv=3, scoring="accuracy"))
 # Result: [0.95035 0.96035 0.9604 ] This is using accuracy so 95%, 96% and 96%. 
 # But 1/10 numbers are '5' if the algorithm was wrong 100% of the time it would still be 90% accurate.
 
-# Cross Validation - Using Predict 
+########## Cross Validation - Using Predict ##########
 y_train_pred = cross_val_predict(sgd_clf, X_train, y_train_5, cv=3) # Returns the predictions made on each fold
 print(y_train_pred)
 
-# Evaluate cross_val_predict
-# (Confusion matrix - how many times does it confuse 5 with another number)
+# Evaluate cross_val_predict - confusion matrix
+# How many times does it confuse 5 with another number
 print(confusion_matrix(y_train_5, y_train_pred)) # Pass the target classification and predicted classification to create the confusion matrix
 # Result:   [[53892   687]
 #           [ 1891  3530]]
@@ -94,7 +100,6 @@ print(recall_score(y_train_5, y_train_pred))    # = TP / (TP+FN)
 print(f1_score(y_train_5, y_train_pred))        # Combination of the two, weighted towards False
 # Balancing act... the more precise the prediction (increased prediction accuracy) comes at the cost of more false negatives... 5s slipping throught the net
 # the less precise the lower the recall... ie more false positives. 
-
 
 # The threshold of the accuracy can be controlled with the decision function
 # SGDClassifier uses a threshold of 0 and it gives result of True (some_digit is 5)
@@ -137,7 +142,7 @@ plt.plot([-50000, threshold_90_precision], [recall_90_precision, recall_90_preci
 plt.plot([threshold_90_precision], [0.9], "ro")                                             # Not shown
 plt.plot([threshold_90_precision], [recall_90_precision], "ro")                             # Not shown
 save_fig("precision_recall_vs_threshold_plot")                                              # Not shown
-plt.show()
+#plt.show()
 
 # Or, plot precision/recall and look to find where it drops off
 def plot_precision_vs_recall(precisions, recalls):
@@ -153,7 +158,7 @@ plt.plot([recall_90_precision, recall_90_precision], [0., 0.9], "r:")
 plt.plot([0.0, recall_90_precision], [0.9, 0.9], "r:")
 plt.plot([recall_90_precision], [0.9], "ro")
 save_fig("precision_vs_recall_plot")
-plt.show()
+#plt.show()
 
 # Or, search for a threshold that gives 90% precision
 threshold_90_precision = thresholds[np.argmax(precisions >= 0.90)]
@@ -164,6 +169,73 @@ y_train_pred_90 = (y_scores >= threshold_90_precision)
 
 print(precision_score(y_train_5, y_train_pred_90))  # prints precision score
 print(recall_score(y_train_5, y_train_pred_90))     # prints recall score
+
+########## Evaluate using Receiver Operating Curve ##########
+# ROC plots true postive rate TPR (recall) against false positive rate FPR.
+# FPR - negative instances identified as positive.
+# TPR/FPR = 1, TNR - negative instances correctly identified as negative (specifity)
+# Area under curve gives a measure of performance. AOC = 1 - perfect, Random classifier = 0.5.
+
+fpr, tpr, thresholds = roc_curve(y_train_5, y_scores)
+
+def plot_roc_curve(fpr, tpr, label=None):
+    plt.plot(fpr, tpr, linewidth=2, label=label)
+    plt.plot([0, 1], [0, 1], 'k--') # dashed diagonal
+    plt.axis([0, 1, 0, 1])                                    # Not shown in the book
+    plt.xlabel('False Positive Rate (Fall-Out)', fontsize=16) # Not shown
+    plt.ylabel('True Positive Rate (Recall)', fontsize=16)    # Not shown
+    plt.grid(True)                                            # Not shown
+
+plt.figure(figsize=(8, 6))                                    # Not shown
+plot_roc_curve(fpr, tpr)
+fpr_90 = fpr[np.argmax(tpr >= recall_90_precision)]           # Not shown
+plt.plot([fpr_90, fpr_90], [0., recall_90_precision], "r:")   # Not shown
+plt.plot([0.0, fpr_90], [recall_90_precision, recall_90_precision], "r:")  # Not shown
+plt.plot([fpr_90], [recall_90_precision], "ro")               # Not shown
+save_fig("roc_curve_plot")                                    # Not shown
+#plt.show()
+
+print(roc_auc_score(y_train_5, y_scores)) # Calculate area under curve
+
+########## Random Forest Classifier ##########
+##############################################
+
+# Run the alogorithm
+forest_clf = RandomForestClassifier(n_estimators=100, random_state=42)
+y_probas_forest = cross_val_predict(forest_clf, X_train, y_train_5, cv=3,
+                                    method="predict_proba")    # Note - RFC doesn't have decision_function so predict_proba instead
+
+y_scores_forest = y_probas_forest[:, 1] # set the score = proba of positive class
+
+# Plot the curve, include the result from SGD for easy comparisson
+fpr_forest, tpr_forest, thresholds_forest = roc_curve(y_train_5,y_scores_forest) # Use class probability instead of scores
+recall_for_forest = tpr_forest[np.argmax(fpr_forest >= fpr_90)]
+plt.figure(figsize=(8, 6))
+plt.plot(fpr, tpr, "b:", linewidth=2, label="SGD")
+plot_roc_curve(fpr_forest, tpr_forest, "Random Forest")
+plt.plot([fpr_90, fpr_90], [0., recall_90_precision], "r:")
+plt.plot([0.0, fpr_90], [recall_90_precision, recall_90_precision], "r:")
+plt.plot([fpr_90], [recall_90_precision], "ro")
+plt.plot([fpr_90, fpr_90], [0., recall_for_forest], "r:")
+plt.plot([fpr_90], [recall_for_forest], "ro")
+plt.grid(True)
+plt.legend(loc="lower right", fontsize=16)
+save_fig("roc_curve_comparison_plot")
+plt.show()
+
+print(roc_auc_score(y_train_5, y_scores_forest)) # Calculate area under curve
+
+# Compare SGD and RFC with precision and recall scores
+print("SGD Precision: ", precision_score(y_train_5, y_train_pred)) # = TP / (TP+FP)
+print("SGD Recall: ", recall_score(y_train_5, y_train_pred))    # = TP / (TP+FN) 
+
+y_train_pred_forest = cross_val_predict(forest_clf, X_train, y_train_5, cv=3)
+print("RFC Precision: ", precision_score(y_train_5, y_train_pred_forest)) # = TP / (TP+FP)
+print("RFC Recall: ", recall_score(y_train_5, y_train_pred_forest))    # = TP / (TP+FN) 
+
+
+
+
 
 
 
