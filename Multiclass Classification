@@ -11,6 +11,7 @@ from sklearn.model_selection import cross_val_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import cross_val_predict
 from sklearn.metrics import confusion_matrix
+from sklearn.neighbors import KNeighborsClassifier
 
 ########## SETUP ##########
 # to make this notebook's output stable across runs
@@ -33,6 +34,28 @@ def save_fig(fig_id, tight_layout=True, fig_extension="png", resolution=300):
     if tight_layout:
         plt.tight_layout()
     plt.savefig(path, format=fig_extension, dpi=resolution)
+
+def plot_digit(data):
+    image = data.reshape(28, 28)
+    plt.imshow(image, cmap = mpl.cm.binary,
+               interpolation="nearest")
+    plt.axis("off")
+
+def plot_digits(instances, images_per_row=10, **options):
+    size = 28
+    images_per_row = min(len(instances), images_per_row)
+    images = [instance.reshape(size,size) for instance in instances]
+    n_rows = (len(instances) - 1) // images_per_row + 1
+    row_images = []
+    n_empty = n_rows * images_per_row - len(instances)
+    images.append(np.zeros((size, size * n_empty)))
+    for row in range(n_rows):
+        rimages = images[row * images_per_row : (row + 1) * images_per_row]
+        row_images.append(np.concatenate(rimages, axis=1))
+    image = np.concatenate(row_images, axis=0)
+    plt.imshow(image, cmap = mpl.cm.binary, **options)
+    plt.axis("off")
+    
 ########## ##########
 
 ########## Get the dataset ##########
@@ -41,6 +64,7 @@ mnist = fetch_openml('mnist_784', version=1, as_frame=False)
 
 # Get an image and label from MNIST
 X, y = mnist["data"], mnist["target"] # Sets X = data key, and y = target
+y = y.astype(np.uint8) # Changes y to an integer
 some_digit = X[0] # Makes some_digit = the first instance of the data key
 
 ########## Split the dataset ##########
@@ -70,19 +94,19 @@ X_train, X_test, y_train, y_test = X[:60000], X[60000:], y[:60000], y[60000:] # 
 
 ########## Stochastic Gradient Descent Classifier ##########
 # SGD is capable of handling multiclass instances
-sgd_clf = SGDClassifier(max_iter=1000, tol=1e-3, random_state=42) # Create the SGDClassifier
-sgd_clf.fit(X_train, y_train)
-print(sgd_clf.predict([some_digit]))
+#sgd_clf = SGDClassifier(max_iter=1000, tol=1e-3, random_state=42) # Create the SGDClassifier
+#sgd_clf.fit(X_train, y_train)
+#print(sgd_clf.predict([some_digit]))
 #print(sgd_clf.decision_function([some_digit])) # print the scores for each class
 #print(cross_val_score(sgd_clf, X_train, y_train, cv=3, scoring="accuracy")) # evalute the accuracy of the score
 
 # Scale the inputs for a better result
-scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train.astype(np.float64))
-cross_val_score(sgd_clf, X_train_scaled, y_train, cv=3, scoring="accuracy")
+#scaler = StandardScaler()
+#X_train_scaled = scaler.fit_transform(X_train.astype(np.float64))
+#cross_val_score(sgd_clf, X_train_scaled, y_train, cv=3, scoring="accuracy")
 
 # Create a confusion matrix
-y_train_pred = cross_val_predict(sgd_clf, X_train_scaled, y_train, cv=3)
+#y_train_pred = cross_val_predict(sgd_clf, X_train_scaled, y_train, cv=3)
 #conf_mx = confusion_matrix(y_train, y_train_pred)
 #print(conf_mx)
 
@@ -111,19 +135,19 @@ y_train_pred = cross_val_predict(sgd_clf, X_train_scaled, y_train, cv=3)
 # Analyze individual errors
 # Print the classifications made on 3s and 5s. 
 # Blocks on the left show images classified as 3s and the blocks on the right show images classified as 5s. 
-cl_a, cl_b = 3, 5
-X_aa = X_train[(y_train == cl_a) & (y_train_pred == cl_a)]
-X_ab = X_train[(y_train == cl_a) & (y_train_pred == cl_b)]
-X_ba = X_train[(y_train == cl_b) & (y_train_pred == cl_a)]
-X_bb = X_train[(y_train == cl_b) & (y_train_pred == cl_b)]
+#cl_a, cl_b = 3, 5
+#X_aa = X_train[(y_train == cl_a) & (y_train_pred == cl_a)]
+#X_ab = X_train[(y_train == cl_a) & (y_train_pred == cl_b)]
+#X_ba = X_train[(y_train == cl_b) & (y_train_pred == cl_a)]
+#X_bb = X_train[(y_train == cl_b) & (y_train_pred == cl_b)]
 
-plt.figure(figsize=(8,8))
-plt.subplot(221); plot_digits(X_aa[:25], images_per_row=5)
-plt.subplot(222); plot_digits(X_ab[:25], images_per_row=5)
-plt.subplot(223); plot_digits(X_ba[:25], images_per_row=5)
-plt.subplot(224); plot_digits(X_bb[:25], images_per_row=5)
-save_fig("error_analysis_digits_plot")
-plt.show()
+#plt.figure(figsize=(8,8))
+#plt.subplot(221); plot_digits(X_aa[:25], images_per_row=5)
+#plt.subplot(222); plot_digits(X_ab[:25], images_per_row=5)
+#plt.subplot(223); plot_digits(X_ba[:25], images_per_row=5)
+#plt.subplot(224); plot_digits(X_bb[:25], images_per_row=5)
+#save_fig("error_analysis_digits_plot")
+#plt.show()
 
 ########## Random Forest Classifier ##########
 # RFC is capable of handling multiclass instances
@@ -132,6 +156,41 @@ plt.show()
 #print(forest_clf.predict([some_digit]))
 #cross_val_score(sgd_clf, X_train, y_train, cv=3, scoring="accuracy") # Evalulate each fold
 
+########## Multilabel Classification ##########
+# To evaluate the instance to more than one class... ie 5 as a big number (7,8 or 9) and as an odd number
+#y_train_large = (y_train >= 7) # is it more than 7?
+#y_train_odd = (y_train % 2 == 1) # does it have a modulus of 1?
+#y_multilabel = np.c_[y_train_large, y_train_odd]
 
+knn_clf = KNeighborsClassifier()
+#knn_clf.fit(X_train, y_multilabel)
+
+#print(knn_clf.predict([some_digit])) # (false, true)
+
+########## Multioutput Classification ##########
+# Multilabel classification where each label can have more than two values (it's multiclass)
+# Example using a noisy MNIST image. 
+# It's a multilabel task in that 'one label per pixel' with each label ranging from 0-255 (256bit greyscale)
+
+# Create training and test sets
+noise = np.random.randint(0, 100, (len(X_train), 784)) # Adds noise to pixel intensities on X_train
+X_train_mod = X_train + noise # Each X-train instance is modified... instance + noise
+noise = np.random.randint(0, 100, (len(X_test), 784)) # As above but for test
+X_test_mod = X_test + noise # As above but for test
+y_train_mod = X_train # Reassigns the original name
+y_test_mod = X_test # Reassigns the original name
+
+# View the modified image and the original image
+some_index = 0
+plt.subplot(121); plot_digit(X_test_mod[some_index])
+plt.subplot(122); plot_digit(y_test_mod[some_index])
+save_fig("noisy_digit_example_plot")
+plt.show()
+
+# Clean the noisy image
+knn_clf.fit(X_train_mod, y_train_mod)
+clean_digit = knn_clf.predict([X_test_mod[some_index]])
+plot_digit(clean_digit)
+save_fig("cleaned_digit_example_plot")
 
 
